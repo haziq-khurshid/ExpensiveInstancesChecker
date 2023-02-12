@@ -8,8 +8,9 @@ The solution includes the following AWS resources:
 * A Lambda function that will perform the actual check for expensive instances.
 * An IAM role that will be assumed by the Lambda function and grants the necessary permissions for the function to run.
 * A Secrets Manager secret that will store the credentials needed to access the EC2 and RDS instances in different profiles.
-* An SNS topic which will be used to send out notifications if any expensive instances are detected.
-* An SNS subscription to the topic using the email address specified in the NotificationEmail parameter.
+* A SNS topic which will be used to send out notifications if any expensive instances are detected.
+* A SNS subscription to the topic using the email address specified in the NotificationEmail parameter.
+* A S3 bucket to store daily logs after lambda invocation.
 
 ## High level Architecture Diagram
 ![ArchitectureDiagram](https://user-images.githubusercontent.com/55794242/218303749-7d4f043d-4df4-47be-a9bf-eea66150cd0a.png)
