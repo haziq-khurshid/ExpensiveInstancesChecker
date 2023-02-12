@@ -1,5 +1,6 @@
 # ExpensiveInstancesChecker
 This CloudFormation template is designed to provide a solution for monitoring EC2 and RDS instances in your AWS account and sending out notifications via SNS if any of the running instances are considered "expensive".
+Assumption have been made that there will be a list of expensive instances provided, this solution will regularly monitor if any of the specified instance is running and will notify accordingly.
 
 ## Overview
 The solution includes the following AWS resources:
