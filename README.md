@@ -33,7 +33,7 @@ The following parameters are required to use this CloudFormation template:
 * EC2InstanceTypes & RDSInstanceTypes: This CloudFormation solution uses environment variables to determine which EC2 and RDS instance types are considered "expensive". To configure these, modify the default parameters in CloudFormation setup or update later in the Lambda function configuration. These variables should be a comma-separated list of instance types. Default values are placed of instances in free-tier for testing purposes.
 * NotificationEmail: The email address to receive notifications if any expensive instances are detected. Subscription should also be confirmed from specified email address later.
 * Profiles: JSON string of key,value pairs for different aws profiles and secrets manager path where their credentials are stored. Default already given.
-* SecretName: The name of the Secrets Manager secret that will store the credentials needed to access the EC2 and RDS instances in different profiles. It should be same as the key given in Profiles variable.
+* SecretName: The name of the Secrets Manager secret that will store the credentials needed to access the EC2 and RDS instances in different profiles. It should be same as the value given in Profiles variable.
 * SecretValue: The JSON string that contains the secrets for the different profiles. An example is provided below:
 `{
     "aws_access_key_id": "ACCESS_KEY_ID",
@@ -43,6 +43,7 @@ The following parameters are required to use this CloudFormation template:
 Example of Parameters:
 ![image](https://user-images.githubusercontent.com/55794242/218304023-de7e4346-1cfc-438b-a823-c252f2f36d47.png)
 
+Note: For multiple accounts, more Secrets on SecretsManager can be created by updating this template and then multiple values can be passed in Profiles.
 
 ## Clean-up
 To remove the resources created by this CloudFormation template, simply delete the CloudFormation stack from the AWS Management Console.
