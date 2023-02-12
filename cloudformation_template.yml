@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  SNSNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: ExpensiveInstancesNotificationTopic
+      TopicName: ExpensiveInstancesNotificationTopic
+  Subscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref SNSNotificationTopic
+      Endpoint: !Ref NotificationEmail
+
+  MySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Ref SecretName
+      SecretString: !Ref SecretValue
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Action: ['sts:AssumeRole']
+          Effect: Allow
+          Principal:
+            Service: [lambda.amazonaws.com]
+      Policies:
+        - PolicyName: ExpensiveInstancesCheckerRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Action:
+              - 'ec2:DescribeInstances'
+              - 'rds:DescribeDBInstances'
+              - 'sns:Publish'
+              - 's3:PutObject'
+              - 'secretsmanager:GetSecretValue'
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              Effect: Allow
+              Resource: '*'
+          
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ExpensiveInstancesCheckerFunction
+      Handler: index.expensive_instances_checker
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import json
+          from datetime import datetime
+
+          def expensive_instances_checker(event, context):
+              # Get Profiles to inspect multiple AWS accounts,
+              # Profiles contains key,value pairs of profile name and path in secrets manager
+              profiles = json.loads(os.environ.get('PROFILES'))
+              for profile_name in profiles.keys():
+                  # Get AWS account credentials from secrets manager
+                  secretsmanager = boto3.client('secretsmanager')
+                  get_secret_value_response = secretsmanager.get_secret_value(SecretId = profiles[profile_name])
+                  configs = json.loads(get_secret_value_response['SecretString'])
+                  
+                  # Connect to EC2 and RDS service
+                  ec2 = boto3.client('ec2',
+                      aws_access_key_id=configs['aws_access_key_id'],
+                      aws_secret_access_key=configs['aws_secret_access_key'],
+                      region_name=configs['region'])
+                  rds = boto3.client('rds',
+                      aws_access_key_id=configs['aws_access_key_id'],
+                      aws_secret_access_key=configs['aws_secret_access_key'],
+                      region_name=configs['region'])
+                  
+                  # List down all EC2 & RDS instances
+                  ec2_instances = ec2.describe_instances()
+                  rds_instances = rds.describe_db_instances()
+                  
+                  # Initialize a list to store the expensive instances
+                  ec2_expensive_instances = []
+                  rds_expensive_instances = []
+                  
+                  # Get the list of allowed instance types from environment variables
+                  expensive_ec2_instance_types = os.environ.get('EXPENSIVE_EC2_INSTANCE_TYPES').split(',')
+                  expensive_rds_instance_types = os.environ.get('EXPENSIVE_RDS_INSTANCE_TYPES').split(',')
+                  
+                  # Check if any expensive EC2 instances are running
+                  for instance in ec2_instances['Reservations']:
+                      for inst in instance['Instances']:
+                          if inst['State']['Name'] == 'running' and inst['InstanceType'] in expensive_ec2_instance_types:
+                                  ec2_expensive_instances.append({
+                                      'InstanceId': inst['InstanceId'],
+                                      'InstanceType': inst['InstanceType']
+                                  })
+                  
+                  # Check if any expensive RDS instances are running
+                  for instance in rds_instances['DBInstances']:
+                      if instance['DBInstanceClass'] in expensive_rds_instance_types:
+                          rds_expensive_instances.append({
+                              'DBInstanceIdentifier': instance['DBInstanceIdentifier'],
+                              'DBInstanceClass': instance['DBInstanceClass']
+                          })
+                  
+                  # If there are expensive instances, send out an SNS notification
+                  if ec2_expensive_instances or rds_expensive_instances:
+                      sns = boto3.client('sns')
+                      sns.publish(
+                          TopicArn=os.environ.get('SNSTopic'),
+                          Message=json.dumps({'EC2 expensive_instances': ec2_expensive_instances,
+                                          'RDS expensive_instances': rds_expensive_instances}),
+                          Subject='Expensive EC2 and RDS instances found!'
+                      )
+
+                  # Store informaton to S3
+                  s3 = boto3.client("s3")
+                  today = datetime.today().strftime("%Y-%m-%d")
+                  file_name = f"{today}_{profile_name}.json"
+              
+                  # JSON data to write to S3
+                  s3.put_object(
+                      Bucket="expensive-instance-logs",
+                      Key=file_name, 
+                      Body=json.dumps({'EC2 expensive_instances': ec2_expensive_instances,
+                                      'RDS expensive_instances': rds_expensive_instances}))
+
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({'EC2 expensive_instances': ec2_expensive_instances,
+                                      'RDS expensive_instances': rds_expensive_instances})
+              }
+      Runtime: 'python3.9'
+      Timeout: 60
+      Environment:
+        Variables:
+          EXPENSIVE_EC2_INSTANCE_TYPES: !Ref EC2InstanceTypes
+          EXPENSIVE_RDS_INSTANCE_TYPES: !Ref RDSInstanceTypes
+          PROFILES: !Ref Profiles
+          SNSTopic: !Ref SNSNotificationTopic
+          S3Bucket: !Ref S3Bucket
+
+  WeekdayTrigger:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: WeekdayTrigger
+      ScheduleExpression: cron(0 9 ? * MON-FRI *)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt LambdaFunction.Arn
+          Id: LambdaFunction
+  
+  PermissionForEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Ref LambdaFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt WeekdayTrigger.Arn
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: expensive-instance-logs
+
+Parameters:
+  SecretName:
+    Type: String
+    Description: The name of the secret to be stored in AWS Secrets Manager
+  SecretValue:
+    Type: String
+    Description: The secret value to be stored in AWS Secrets Manager
+    NoEcho: true
+  EC2InstanceTypes:
+    Type: String
+    Description: The EC2 instance types to be considered expensive
+    Default: "t1.micro,t2.micro"
+  RDSInstanceTypes:
+    Type: String
+    Description: The RDS instance types to be considered expensive
+    Default: "db.t2.micro,db.t3.micro"
+  Profiles:
+    Type: String
+    Description: The aws profiles to be used
+    Default: '{"profile1":"awsaccounts/profile1"}'
+  NotificationEmail:
+    Type: String
+    Description: The email address that will be subscribed to SNS Topic
