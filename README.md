@@ -30,7 +30,7 @@ To use this CloudFormation template, follow these steps:
 ## Parameters
 The following parameters are required to use this CloudFormation template:
 
-* EC2InstanceTypes & RDSInstanceTypes: This CloudFormation solution uses environment variables to determine which EC2 and RDS instance types are considered "expensive". To configure these, modify the default parameters in CloudFormation setup or update later in the Lambda function configuration. These variables should be a comma-separated list of instance types.
+* EC2InstanceTypes & RDSInstanceTypes: This CloudFormation solution uses environment variables to determine which EC2 and RDS instance types are considered "expensive". To configure these, modify the default parameters in CloudFormation setup or update later in the Lambda function configuration. These variables should be a comma-separated list of instance types. Default values are placed of instances in free-tier for testing purposes.
 * NotificationEmail: The email address to receive notifications if any expensive instances are detected. Subscription should also be confirmed from specified email address later.
 * Profiles: JSON string of key,value pairs for different aws profiles and secrets manager path where their credentials are stored. Default already given.
 * SecretName: The name of the Secrets Manager secret that will store the credentials needed to access the EC2 and RDS instances in different profiles. It should be same as the key given in Profiles variable.
@@ -40,6 +40,8 @@ The following parameters are required to use this CloudFormation template:
     "aws_secret_access_key": "SECRET_ACCESS_KEY",
     "region": "REGION_NAME"
 }`
+Example of Parameters:
+![image](https://user-images.githubusercontent.com/55794242/218304023-de7e4346-1cfc-438b-a823-c252f2f36d47.png)
 
 
 ## Clean-up
